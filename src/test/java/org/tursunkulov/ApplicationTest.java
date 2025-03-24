@@ -1,4 +1,4 @@
-package org.example.tursunkulov;
+package org.tursunkulov;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
