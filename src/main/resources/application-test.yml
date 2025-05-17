@@ -1,7 +1,18 @@
 spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: audit-test-group
   cassandra:
     contact-points: localhost
     port: 9042
-    keyspace-name: test_audit_keyspace
-    local-datacenter: datacenter1
-    schema-action: NONE
+    keyspace-name: audit_keyspace_test
+    local-datacenter: dc1
+    schema-action: create_if_not_exists
+
+topic:
+  audit: test-topic
+
+logging:
+  level:
+    org.tursunkulov: DEBUG

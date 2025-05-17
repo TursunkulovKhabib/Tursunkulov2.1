@@ -1,7 +1,26 @@
 spring:
+  application:
+    name: audit-service
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    consumer:
+      group-id: audit-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "org.tursunkulov.dto"
   cassandra:
-    contact-points: 127.0.0.1
-    schema-action: CREATE_IF_NOT_EXISTS
-    local-datacenter: datacenter1
-    keyspace-name: my_keyspace
-    port: 9042
+    contact-points: ${SPRING_DATA_CASSANDRA_CONTACT_POINTS:cassandra}
+    port: ${SPRING_DATA_CASSANDRA_PORT:9042}
+    keyspace-name: ${SPRING_DATA_CASSANDRA_KEYSPACE_NAME:audit_keyspace}
+    local-datacenter: ${SPRING_DATA_CASSANDRA_LOCAL_DATACENTER:dc1}
+    schema-action: ${SPRING_DATA_CASSANDRA_SCHEMA_ACTION:create_if_not_exists}
+
+topic:
+  audit: audit-topic
+
+logging:
+  level:
+    org.springframework.kafka: INFO
+    org.tursunkulov: DEBUG
