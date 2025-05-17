@@ -2,43 +2,64 @@ package org.tursunkulov.service;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.PreparedStatement;
-import com.datastax.oss.driver.api.core.cql.BoundStatement;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.datastax.oss.driver.api.core.cql.Row;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
+import org.tursunkulov.entity.User;
 import org.tursunkulov.exception.UserNotFoundException;
+import org.tursunkulov.repository.UserRepository;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class UserAuditService {
+  private final CqlSession session;
+  private final UserRepository userRepository;
 
-  @Autowired private CqlSession session;
+  @PostConstruct
+  public void init() {
+    PreparedStatement insertStmt = session.prepare("""
+                    INSERT INTO my_keyspace.user_audit
+                      (user_id, event_time, event_type, event_details)
+                    VALUES (?, ?, ?, ?)
+                """);
+    PreparedStatement selectStmt = session.prepare("""
+                    SELECT * FROM my_keyspace.user_audit
+                     WHERE user_id = ?
+                """);
+  }
 
   public void insertUserAction(UUID userId) {
-    PreparedStatement preparedStatement =
-        session.prepare(
-            "INSERT INTO my_keyspace.user_audit (user_id, event_time, event_type, event_details) "
-                + "VALUES (?, ?, ?, ?)");
-
-    BoundStatement boundStatement =
-        preparedStatement.bind(
-            java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"),
-            java.time.Instant.now(),
-            Action.DROPPED_DATABASE.toString(),
-            "User DROPPED DATABASE from IP 192.168.1.1");
-    session.execute(boundStatement);
+    User user = new User(
+        userId,
+        Instant.now(), "INSERT", "Performed INSERT for " + userId);
+    userRepository.save(user);
   }
 
-  public void readUserAction(UUID userId) throws UserNotFoundException {
-    PreparedStatement preparedStatement =
-        session.prepare("SELECT * FROM my_keyspace.user_audit WHERE user_id = ?");
-    BoundStatement boundStatement = preparedStatement.bind(userId);
-    ResultSet resultSet = session.execute(boundStatement);
+  public Integer getTtlForAudit(UUID userId, Instant eventTime) {
+    PreparedStatement ps = session.prepare(
+        "SELECT TTL(event_details) as ttl FROM my_keyspace.user_audit WHERE user_id = ? AND event_time = ?"
+    );
+    Row row = session.execute(ps.bind(userId, eventTime)).one();
+    return row != null ? row.getInt("ttl") : null;
+  }
 
-    if (!resultSet.iterator().hasNext()) {
-      throw new UserNotFoundException("User with UUID " + userId + " wasn't found");
+
+  @SneakyThrows
+  public List<User> readUserActions(UUID userId) {
+    if (userId == null) {
+      throw new IllegalArgumentException("userId must not be null");
     }
-    resultSet.iterator().next();
+    List<User> audits = userRepository.findByUserId(userId);
+    if (audits.isEmpty()) {
+      throw new UserNotFoundException("User " + userId + " not found");
+    }
+    return audits;
   }
+
 }
