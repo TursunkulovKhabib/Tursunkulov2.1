@@ -1,24 +1,71 @@
-version: '3.9'
+version: '3.8'
 
 services:
+  # Zookeeper (для Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: audit_zookeeper
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - '2181:2181'
+
+  # Kafka-брокер
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: audit_kafka
+    restart: always
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    ports:
+      - '9092:9092'
+
+  # Cassandra для хранения событий аудита
   cassandra:
     image: cassandra:4.1
-    container_name: cassandra-node
+    container_name: audit_cassandra
+    restart: always
+    environment:
+      CASSANDRA_CLUSTER_NAME: "AuditCluster"
+      CASSANDRA_DC: "dc1"
+      CASSANDRA_RACK: "rack1"
     ports:
-      - "9042:9042"
-      - "7000:7000"
-      - "7199:7199"
+      - '9042:9042'
     volumes:
       - cassandra_data:/var/lib/cassandra
+
+  # Сервис аудита (Spring Boot)
+  audit-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audit_service
+    restart: on-failure
+    depends_on:
+      - kafka
+      - cassandra
+    ports:
+      - '8081:8081'
     environment:
-      - CASSANDRA_CLUSTER_NAME=AuditCluster
-      - CASSANDRA_DC=datacenter1
-      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
-    healthcheck:
-      test: ["CMD-SHELL", "nodetool status | grep UN"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
+      # Kafka
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      TOPIC_AUDIT: audit-topic
+
+      # Cassandra
+      SPRING_DATA_CASSANDRA_CONTACT_POINTS: cassandra
+      SPRING_DATA_CASSANDRA_PORT: 9042
+      SPRING_DATA_CASSANDRA_KEYSPACE_NAME: audit_keyspace
+      SPRING_DATA_CASSANDRA_SCHEMA_ACTION: create_if_not_exists
 
 volumes:
   cassandra_data:
